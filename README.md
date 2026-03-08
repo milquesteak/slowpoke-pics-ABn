@@ -49,6 +49,7 @@ The model depends on the two vote types being used consistently:
 - **— No preference** — you examined the frame and genuinely cannot tell the sources apart. Use this only on frames where a difference *could* exist but isn't detectable to you.
 - **Unvoted frames** are excluded entirely. Simply navigate past any frame that isn't useful for comparison (flat areas, pure black, etc.) without voting.
 
+***!!!IMPORTANT!!!*** 
 The distinction between "no preference" and skipping matters. No-preference votes are evidence that the sources are hard to distinguish; skipped frames are treated as if they never happened. Voting no-preference on non-discriminable content will inflate the tie rate and make results look less decisive than they are.
 
 ---
