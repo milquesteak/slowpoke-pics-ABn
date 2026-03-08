@@ -51,7 +51,7 @@ The model depends on the two vote types being used consistently:
 
 **!!!IMPORTANT!!!** 
 
-The distinction between "no preference" and skipping matters. No-preference votes are evidence that the sources are hard to distinguish; skipped frames are treated as if they never happened. Voting no-preference on non-discriminable content will inflate the tie rate and make results look less decisive than they are.
+The distinction between "no preference" and skipping matters. No-preference votes are evidence that the sources are hard to distinguish; skipped frames are treated as if they never happened. Voting no-preference on non-discriminable content will inflate the tie rate and make results look less decisive than they are. No-preference should **not** be used on frames with content you do not deem important for comparison, e.g., intertitles, credits, black or highly blurry frames, etc.
 
 ---
 
