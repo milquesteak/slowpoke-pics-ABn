@@ -5,7 +5,6 @@
 // @description Double-blind ABn source comparison testing for slow.pics
 // @author milquesteak
 // @match https://slow.pics/c/*
-// @grant GM.setClipboard
 // ==/UserScript==
 
 /*
@@ -1381,8 +1380,8 @@
 				.map((ri, bi) => ({ ri, bi }))
 				.sort((a, b) => stats.pBest[b.bi] - stats.pBest[a.bi]);
 
-			t += ' '.repeat(padLen + 2) + AXIS_LABELS() + '\n';
-			t += ' '.repeat(padLen + 2) + AXIS_RULER() + '\n';
+			t += ' '.repeat(padLen + 1) + AXIS_LABELS() + '\n';
+			t += ' '.repeat(padLen + 1) + AXIS_RULER() + '\n';
 			order.forEach(({ ri, bi }) => {
 				const name = state.sourceNames[ri] ?? `Source ${ri}`;
 				const phi = stats.phiMean[bi];
@@ -1398,8 +1397,8 @@
 					: ' '.repeat(14);
 				t += `${pad(name)} ${bar} E[φ]=${pct(phi).padStart(4)} ${piStr} P(best)=${pct(pb).padStart(4)} ${votes}v\n`;
 			});
-			t += ' '.repeat(padLen + 2) + AXIS_RULER() + '\n';
-			t += ' '.repeat(padLen + 2) + AXIS_LABELS() + '\n\n';
+			t += ' '.repeat(padLen + 1) + AXIS_RULER() + '\n';
+			t += ' '.repeat(padLen + 1) + AXIS_LABELS() + '\n\n';
 			t += ' ▌ = E[φⱼ]: expected win-rate on a discriminable frame\n';
 			t += ' [═══] = 95% prediction interval on φⱼ\n';
 			t += ' P(best): posterior probability this source has the highest φⱼ of all sources\n\n';
