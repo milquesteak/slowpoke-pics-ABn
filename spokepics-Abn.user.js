@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name Slowpoke Pics ABn Blind Test
 // @namespace http://tampermonkey.net/
-// @version 1.16
+// @version 1.17
 // @description Double-blind ABn source comparison testing for slow.pics
 // @author milquesteak
 // @match https://slow.pics/c/*
+// @grant GM.setClipboard
 // ==/UserScript==
 
 /*
@@ -72,6 +73,14 @@
 	function getCurrentRealSourceIndex() {
 		const active = document.querySelector('#images-dropdown a.dropdown-item.active');
 		if (!active) return 0;
+		// When sources are filtered, _sourceItemIds holds the ordered list of selected
+		// item IDs. The "real index" is the position within that filtered list, which
+		// aligns with how sourceNames, shuffleMap, and reverseMap are indexed.
+		if (state._sourceItemIds && state._sourceItemIds.length > 0) {
+			const idx = state._sourceItemIds.indexOf(active.id);
+			return idx === -1 ? 0 : idx;
+		}
+		// No filtering — fall back to raw DOM index (all sources selected in order)
 		const match = active.id.match(/dropdown-image-(\d+)/);
 		return match ? parseInt(match[1], 10) : 0;
 	}
@@ -574,6 +583,84 @@
 		return state.currentFrame; // unknown URL — keep last value
 	}
 
+	// ─── SOURCE NAVIGATION OVERRIDE ────────────────────────────────────────────
+	// During a test, arrow keys and image clicks must cycle only through the
+	// selected sources. We intercept these events in capture phase so they fire
+	// before the site's own handlers, and suppress the default behaviour.
+
+	function getSelectedSourceIds() {
+		// _sourceItemIds holds the actual dropdown item IDs for selected sources.
+		// Fall back to all sources if not set (e.g. no sources were deselected).
+		if (state._sourceItemIds && state._sourceItemIds.length > 0) {
+			return state._sourceItemIds;
+		}
+		return Array.from(
+			document.querySelectorAll('#images-dropdown a.dropdown-item[id^="dropdown-image-"]')
+		).map(el => el.id);
+	}
+
+	function getCurrentSourceId() {
+		const active = document.querySelector('#images-dropdown a.dropdown-item.active');
+		return active ? active.id : null;
+	}
+
+	function switchToSourceId(id) {
+		const el = document.getElementById(id);
+		if (el) el.click();
+	}
+
+	function navigateSource(direction) {
+		const ids = getSelectedSourceIds();
+		if (ids.length < 2) return false;
+		const currentId = getCurrentSourceId();
+		const idx = ids.indexOf(currentId);
+		const nextIdx = ((idx === -1 ? 0 : idx) + direction + ids.length) % ids.length;
+		switchToSourceId(ids[nextIdx]);
+		return true;
+	}
+
+	function onAbnKeydown(e) {
+		if (state.phase !== 'testing' && state.phase !== 'mask-setup') return;
+		if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+		if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+		// Only intercept if sources are filtered — if all are selected let site handle it
+		const ids = getSelectedSourceIds();
+		const allItems = document.querySelectorAll('#images-dropdown a.dropdown-item[id^="dropdown-image-"]');
+		if (ids.length === allItems.length) return;
+		e.preventDefault();
+		e.stopPropagation();
+		navigateSource(e.key === 'ArrowRight' ? 1 : -1);
+	}
+
+	function onAbnImageClick(e) {
+		if (state.phase !== 'testing' && state.phase !== 'mask-setup') return;
+		const ids = getSelectedSourceIds();
+		const allItems = document.querySelectorAll('#images-dropdown a.dropdown-item[id^="dropdown-image-"]');
+		if (ids.length === allItems.length) return;
+		e.preventDefault();
+		e.stopPropagation();
+		navigateSource(1);
+	}
+
+	let _abnImageClickTarget = null;
+
+	function startSourceNavOverride() {
+		document.addEventListener('keydown', onAbnKeydown, true);
+		_abnImageClickTarget = document.querySelector('.image-container #image') ??
+			document.querySelector('#image');
+		if (_abnImageClickTarget) {
+			_abnImageClickTarget.addEventListener('click', onAbnImageClick, true);
+		}
+	}
+
+	function stopSourceNavOverride() {
+		document.removeEventListener('keydown', onAbnKeydown, true);
+		if (_abnImageClickTarget) {
+			_abnImageClickTarget.removeEventListener('click', onAbnImageClick, true);
+			_abnImageClickTarget = null;
+		}
+	}
+
 	function startTracking() {
 		buildUrlFrameMap();
 		state.currentFrame = getCurrentFrameFromUrl();
@@ -616,7 +703,8 @@
 		navMutationBusy = true;
 		try {
 			applyNavbarMask();
-			applyDropdownMask();
+			hideUnselectedDropdownItems();
+		applyDropdownMask();
 			updatePanel();
 			updateVoteBtn();
 			updateThumbnailBorders();
@@ -748,20 +836,47 @@
 		});
 	}
 
+	function hideUnselectedDropdownItems() {
+		if (!state._sourceItemIds || state._sourceItemIds.length === 0) return;
+		document.querySelectorAll('#images-dropdown a.dropdown-item[id^="dropdown-image-"]')
+			.forEach(item => {
+				if (!state._sourceItemIds.includes(item.id)) {
+					item.style.display = 'none';
+					item.dataset.abnHidden = '1';
+				}
+			});
+	}
+
+	function restoreDropdownItems() {
+		document.querySelectorAll('#images-dropdown a.dropdown-item[id^="dropdown-image-"]')
+			.forEach(item => {
+				if (item.dataset.abnHidden) {
+					item.style.display = '';
+					delete item.dataset.abnHidden;
+				}
+			});
+	}
+
 	function enterMaskSetup() {
+		state.phase = 'mask-setup';
 		positionDrawOverlay();
 		drawOverlay.classList.add('active');
 		maskToolbar.classList.add('visible');
 		window.addEventListener('resize', positionDrawOverlay);
 		document.addEventListener('scroll', positionDrawOverlay, { capture: true, passive: true });
+		hideUnselectedDropdownItems();
+		startSourceNavOverride();
 	}
 
 	function exitMaskSetup() {
+		state.phase = 'idle';
 		drawOverlay.classList.remove('active');
 		maskToolbar.classList.remove('visible');
 		selectionRect.style.display = 'none';
 		window.removeEventListener('resize', positionDrawOverlay);
 		document.removeEventListener('scroll', positionDrawOverlay, { capture: true });
+		restoreDropdownItems();
+		stopSourceNavOverride();
 	}
 
 	function onMouseDown(e) {
@@ -833,16 +948,21 @@
 
 		buildShuffleMap(); // shuffle fires here, after mask setup is complete
 
-		// Randomly jump to a source so the user doesn't start on the same one
-		// they were viewing during mask setup, which would break the blind.
-		const randomRealIdx = Math.floor(Math.random() * state.totalSources);
-		const jumpTarget = document.getElementById(`dropdown-image-${randomRealIdx}`);
+		// Randomly jump to a selected source so the user doesn't start on the same
+		// one they were viewing during mask setup, which would break the blind.
+		const sourceIds = (state._sourceItemIds && state._sourceItemIds.length > 0)
+			? state._sourceItemIds
+			: Array.from(document.querySelectorAll('#images-dropdown a.dropdown-item[id^="dropdown-image-"]'))
+				.map(el => el.id);
+		const jumpId = sourceIds[Math.floor(Math.random() * sourceIds.length)];
+		const jumpTarget = jumpId ? document.getElementById(jumpId) : null;
 		if (jumpTarget) jumpTarget.click();
 
 		showPanel();
 		applyDropdownMask();
 		startNavbarMasking();
 		startTracking();
+		startSourceNavOverride();
 
 		if (state.mask) {
 			maskOverlay.classList.add('visible');
@@ -857,7 +977,9 @@
 	function endTest(clearMask = true) {
 		state.phase = 'idle';
 		stopTracking();
+		stopSourceNavOverride();
 		stopNavbarMasking();
+		restoreDropdownItems();
 		restoreDropdownNames();
 		clearThumbnailBorders();
 		hidePanel();
@@ -1450,8 +1572,21 @@
 
 		const sub = document.createElement('div');
 		sub.textContent = 'Deselect sources to exclude. At least 2 required.';
-		sub.style.cssText = 'font-size:11px;color:#444;margin-bottom:16px;';
+		sub.style.cssText = 'font-size:11px;color:#444;margin-bottom:8px;';
 		box.appendChild(sub);
+
+		const selBtnRow = document.createElement('div');
+		selBtnRow.style.cssText = 'display:flex;gap:8px;margin-bottom:14px;';
+		const mkSelBtn = (label, fn) => {
+			const b = document.createElement('button');
+			b.textContent = label;
+			b.style.cssText = 'padding:4px 12px;border-radius:4px;border:1px solid #333;background:transparent;color:#888;font-family:inherit;font-size:11px;cursor:pointer;';
+			b.addEventListener('click', fn);
+			return b;
+		};
+		selBtnRow.appendChild(mkSelBtn('Select all', () => checkboxes.forEach(cb => { cb.checked = true; })));
+		selBtnRow.appendChild(mkSelBtn('Deselect all', () => checkboxes.forEach(cb => { cb.checked = false; })));
+		box.appendChild(selBtnRow);
 
 		const checkboxes = names.map((name, i) => {
 			const row = document.createElement('label');
